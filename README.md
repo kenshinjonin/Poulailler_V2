@@ -4,7 +4,9 @@ Code ESP32 pour automatiser une porte de poulailler avec calcul automatique de l
 
 (Bientôt) Pleinement fonctionnel avec HomeAssistant mais devrait fonctionner avec n'importe quel système gérant MQTT.
 
-
+TODO :
+- MQTT
+- OTA
 
 =================================================================
 
@@ -14,3 +16,6 @@ Esp32 code, to automate a chicken coop door using automatic sun position calcula
 
 (soon) Fully tested with HomeAssistant but should work with any MQTT-aware system.
 
+TODO :
+- MQTT
+- OTA
