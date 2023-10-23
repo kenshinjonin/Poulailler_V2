@@ -261,6 +261,20 @@ void handleButtonPress() {
   }
 }
 
+void initPorte() {
+  // Déterminer si la porte doit être ouverte ou fermée au démarrage
+  DateTime now = rtc.now();
+  int currentMinuteOfDay = now.hour() * 60 + now.minute();
+
+  if (currentMinuteOfDay >= leverSoleil && currentMinuteOfDay < coucherSoleil) {
+    // L'heure actuelle est entre le lever et le coucher du soleil, ouvrir la porte
+    ouvrirPorte();
+  } else {
+    // L'heure actuelle est entre le coucher du soleil et le lever du lendemain, fermer la porte
+    fermerPorte();
+  }
+}
+
 // Fonction d'initialisation
 void setup() {
   Serial.begin(115200);
@@ -268,17 +282,6 @@ void setup() {
 
   Wire.begin();         // Démarrer la communication I2C
   rtc.begin();          // Démarrer la communication avec le module RTC
-
-  // Mettre à jour l'heure du module DS3231 au démarrage avec l'heure NTP
-  updateDS3231Time();
-
-  // Calculer l'heure du lever du soleil et du coucher du soleil au démarrage
-  calculateSunriseSunset();
-
-  // Démarrer une tâche pour la mise à jour de l'heure toutes les 24 heures
-  xTaskCreatePinnedToCore(updateTimeTask, "updateTimeTask", 4096, NULL, 1, NULL, 0);
-  // Démarrer une tâche pour recalculer l'heure du lever du soleil et du coucher du soleil toutes les 24 heures à 00h01
-  xTaskCreatePinnedToCore(calculateSunriseSunsetTask, "calculateSunriseSunsetTask", 4096, NULL, 1, NULL, 0);
 
   // Configuration des broches en entrée/sortie
   pinMode(buttonPin, INPUT_PULLUP);
@@ -290,6 +293,20 @@ void setup() {
 
   // Désactiver le moteur au démarrage
   digitalWrite(motorEnablePin, LOW);
+
+  // Mettre à jour l'heure du module DS3231 au démarrage avec l'heure NTP
+  updateDS3231Time();
+
+  // Calculer l'heure du lever du soleil et du coucher du soleil au démarrage
+  calculateSunriseSunset();
+
+  // Appeler la fonction pour initialiser la porte
+  initPorte();
+  
+  // Démarrer une tâche pour la mise à jour de l'heure toutes les 24 heures
+  xTaskCreatePinnedToCore(updateTimeTask, "updateTimeTask", 4096, NULL, 1, NULL, 0);
+  // Démarrer une tâche pour recalculer l'heure du lever du soleil et du coucher du soleil toutes les 24 heures à 00h01
+  xTaskCreatePinnedToCore(calculateSunriseSunsetTask, "calculateSunriseSunsetTask", 4096, NULL, 1, NULL, 0);
 
   // Attachement des interruptions pour le bouton poussoir
   attachInterrupt(digitalPinToInterrupt(buttonPin), handleButtonPress, CHANGE);
