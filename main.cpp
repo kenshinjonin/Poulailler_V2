@@ -5,10 +5,13 @@
 #include <RTClib.h>
 #include <Timezone.h>
 #include <Dusk2Dawn.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <AsyncElegantOTA.h>
 
 // Paramètres de connexion WiFi
-const char* ssid = "Wokwi-GUEST";
-const char* password = "";
+const char* ssid = "SSID";
+const char* password = "PASSWORD";
 
 // Objets pour se connecter au réseau WiFi
 WiFiClient wifiClient;
@@ -17,7 +20,8 @@ WiFiUDP ntpUDP;
 // Objet NTPClient pour récupérer l'heure via NTP
 NTPClient timeClient(ntpUDP, "europe.pool.ntp.org");
 
-RTC_DS3231 rtc; // Créer un objet RTC_DS3231 pour interagir avec le module RTC
+// Créer un objet RTC_DS3231 pour interagir avec le module RTC
+RTC_DS3231 rtc;
 
 // Définir le fuseau horaire (ajuster en fonction de votre emplacement géographique)
 TimeChangeRule myDST = {"CEST", Last, Sun, Mar, 2, 120};    // Heure d'été (Central European Summer Time)
@@ -57,7 +61,7 @@ const unsigned long stopDuration = 1000;
 // Durée maximale de mouvement de la porte (en millisecondes)
 const unsigned long maxMovementDuration = 22000; // 22 secondes
 
-// Fonction pour calculer l'heure du lever du soleil et du coucher du soleil
+// Calculer l'heure du lever du soleil et du coucher du soleil
 void calculateSunriseSunset() {
   
   DateTime now = rtc.now();
@@ -110,18 +114,22 @@ void calculateSunriseSunset() {
   Serial.println(coucherFormate);
 }
 
-// Fonction pour se connecter au réseau WiFi
+// Connexion au réseau WiFi
 void connectWiFi() {
+  WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.print(".");
   }
   Serial.println("");
-  Serial.println("WiFi connecté");
+  Serial.println("WiFi connecté à : ");
+  Serial.println(ssid);
+  Serial.print("Addresse IP : ");
+  Serial.println(WiFi.localIP());
 }
 
-// Fonction pour mettre à jour l'heure du module DS3231 via NTP et gérer le passage automatique à l'heure d'été/heure d'hiver
+// Mettre à jour l'heure du module DS3231 via NTP et gérer le passage automatique à l'heure d'été/heure d'hiver
 void updateDS3231Time() {
   timeClient.update(); // Récupérer l'heure NTP
   time_t utcTime = timeClient.getEpochTime(); // Obtenir l'heure UTC en secondes depuis le 1er janvier 1970
@@ -163,7 +171,7 @@ void calculateSunriseSunsetTask(void *parameter) {
   }
 }
 
-// Fonction pour arrêter le mouvement de la porte
+// Arrêter le mouvement de la porte
 void stopPorte() {
   isMoving = false;
   digitalWrite(motorInput1, LOW);
@@ -172,7 +180,7 @@ void stopPorte() {
   Serial.println("Porte arrêtée");
 }
 
-// Fonction pour ouvrir la porte
+// Ouvrir la porte
 void ouvrirPorte() {
   isMoving = true;
   Serial.println("Ouverture de la porte");
@@ -196,7 +204,7 @@ void ouvrirPorte() {
   Serial.println("Porte ouverte");
 }
 
-// Fonction pour fermer la porte
+// Fermer la porte
 void fermerPorte() {
   isMoving = true;
   Serial.println("Fermeture de la porte");
@@ -263,6 +271,7 @@ void handleButtonPress() {
   }
 }
 
+// Initialisation de la porte
 void initPorte() {
   // Déterminer si la porte doit être ouverte ou fermée au démarrage
   DateTime now = rtc.now();
@@ -277,6 +286,7 @@ void initPorte() {
   }
 }
 
+// Affichage de la liste des tâches
 void printTaskList() {
   char taskListBuffer[512];
   vTaskList(taskListBuffer);
@@ -284,8 +294,8 @@ void printTaskList() {
   Serial.println(taskListBuffer);
 }
 
-// Fonction pour la tâche d'impression de la liste des tâches
-TaskHandle_t printTaskListTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'impression
+// Tâche d'affichage de la liste des tâches
+TaskHandle_t printTaskListTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'affichage
 void printTaskListTask(void *parameter) {
   for (;;) {
     // Appelez la fonction pour afficher la liste des tâches
@@ -296,7 +306,7 @@ void printTaskListTask(void *parameter) {
   }
 }
 
-// Fonction pour la tâche de fermeture de porte
+// Ttâche de fermeture de porte
 TaskHandle_t closeDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche de fermeture de porte
 void closeDoorTask(void *parameter) {
   for (;;) {
@@ -321,7 +331,7 @@ void closeDoorTask(void *parameter) {
   }
 }
 
-// Fonction pour la tâche d'ouverture de porte
+// Tâche d'ouverture de porte
 TaskHandle_t openDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'ouverture de porte
 void openDoorTask(void *parameter) {
   for (;;) {
@@ -346,13 +356,23 @@ void openDoorTask(void *parameter) {
   }
 }
 
+// Serveur WEB
+AsyncWebServer server(80);
+
 // Fonction d'initialisation
 void setup() {
-  Serial.begin(115200);
-  connectWiFi();  // Se connecter au réseau WiFi
 
-  Wire.begin();         // Démarrer la communication I2C
-  rtc.begin();          // Démarrer la communication avec le module RTC
+  // Initialisation console série
+  Serial.begin(115200);
+
+  // Se connecter au réseau WiFi
+  connectWiFi();
+
+  // Démarrer la communication I2C (module RTC)
+  Wire.begin();
+
+  // Démarrer la communication avec le module RTC
+  rtc.begin();
 
   // Configuration des broches en entrée/sortie
   pinMode(buttonPin, INPUT_PULLUP);
@@ -387,6 +407,17 @@ void setup() {
 
   // Attachement des interruptions pour le bouton poussoir
   attachInterrupt(digitalPinToInterrupt(buttonPin), handleButtonPress, CHANGE);
+
+  //Page WEB
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  request->send(200, "text/plain", "Hi! I am ESP32.");
+  });
+  
+  // Start ElegantOTA
+  AsyncElegantOTA.begin(&server);
+  server.begin();
+  Serial.println("HTTP server started");
+  
 }
 
 
