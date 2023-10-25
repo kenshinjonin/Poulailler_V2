@@ -130,6 +130,7 @@ void updateDS3231Time() {
 }
 
 // Tâche pour mettre à jour l'heure toutes les 24 heures
+TaskHandle_t updateTimeTaskHandle = NULL; // Variable pour stocker le handle de la tâche updateTimeTask
 void updateTimeTask(void *parameter) {
   for (;;) {
     vTaskDelay(pdMS_TO_TICKS(86400000)); // Attendre 24 heures (en millisecondes)
@@ -139,6 +140,7 @@ void updateTimeTask(void *parameter) {
 }
 
 // Fonction de tâche pour recalculer l'heure du lever du soleil et du coucher du soleil tous les jours à 00h01
+TaskHandle_t calculateSunriseSunsetTaskHandle = NULL; // Variable pour stocker le handle de la tâche calculateSunriseSunsetTask
 void calculateSunriseSunsetTask(void *parameter) {
   for (;;) {
     // Attendre jusqu'à 00h01 pour recalculer l'heure du lever du soleil et du coucher du soleil
@@ -282,9 +284,8 @@ void printTaskList() {
   Serial.println(taskListBuffer);
 }
 
-TaskHandle_t printTaskListTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'impression
-
 // Fonction pour la tâche d'impression de la liste des tâches
+TaskHandle_t printTaskListTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'impression
 void printTaskListTask(void *parameter) {
   for (;;) {
     // Appelez la fonction pour afficher la liste des tâches
@@ -295,10 +296,8 @@ void printTaskListTask(void *parameter) {
   }
 }
 
-// Variable pour stocker le handle de la tâche de fermeture de porte
-TaskHandle_t closeDoorTaskHandle = NULL;
-
 // Fonction pour la tâche de fermeture de porte
+TaskHandle_t closeDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche de fermeture de porte
 void closeDoorTask(void *parameter) {
   for (;;) {
     // Obtenir l'heure actuelle
@@ -322,9 +321,8 @@ void closeDoorTask(void *parameter) {
   }
 }
 
-TaskHandle_t openDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'ouverture de porte
-
 // Fonction pour la tâche d'ouverture de porte
+TaskHandle_t openDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'ouverture de porte
 void openDoorTask(void *parameter) {
   for (;;) {
     // Obtenir l'heure actuelle
@@ -377,9 +375,9 @@ void setup() {
   initPorte();
   
   // Démarrer une tâche pour la mise à jour de l'heure toutes les 24 heures
-  xTaskCreatePinnedToCore(updateTimeTask, "updateTimeTask", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(updateTimeTask, "updateTimeTask", 4096, NULL, 1, &updateTimeTaskHandle, 0);
   // Démarrer une tâche pour recalculer l'heure du lever du soleil et du coucher du soleil toutes les 24 heures à 00h01
-  xTaskCreatePinnedToCore(calculateSunriseSunsetTask, "calculateSunriseSunsetTask", 4096, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(calculateSunriseSunsetTask, "calculateSunriseSunsetTask", 4096, NULL, 1, &calculateSunriseSunsetTaskHandle, 0);
   // Créer la tâche d'impression de la liste des tâches
   xTaskCreatePinnedToCore(printTaskListTask, "printTaskListTask", 4096, NULL, 1, &printTaskListTaskHandle, 0);
   // Créer la tâche de fermeture de porte
