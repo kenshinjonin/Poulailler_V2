@@ -275,6 +275,26 @@ void initPorte() {
   }
 }
 
+void printTaskList() {
+  char taskListBuffer[512];
+  vTaskList(taskListBuffer);
+  Serial.println("Task List:");
+  Serial.println(taskListBuffer);
+}
+
+TaskHandle_t printTaskListTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'impression
+
+// Fonction pour la tâche d'impression de la liste des tâches
+void printTaskListTask(void *parameter) {
+  for (;;) {
+    // Appelez la fonction pour afficher la liste des tâches
+    printTaskList();
+
+    // Attente d'un certain intervalle (par exemple, 30 minutes)
+    vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000)); // 30 minutes
+  }
+}
+
 // Fonction d'initialisation
 void setup() {
   Serial.begin(115200);
@@ -307,10 +327,14 @@ void setup() {
   xTaskCreatePinnedToCore(updateTimeTask, "updateTimeTask", 4096, NULL, 1, NULL, 0);
   // Démarrer une tâche pour recalculer l'heure du lever du soleil et du coucher du soleil toutes les 24 heures à 00h01
   xTaskCreatePinnedToCore(calculateSunriseSunsetTask, "calculateSunriseSunsetTask", 4096, NULL, 1, NULL, 0);
+  // Créer la tâche d'impression de la liste des tâches
+  xTaskCreatePinnedToCore(printTaskListTask, "printTaskListTask", 4096, NULL, 1, &printTaskListTaskHandle, 0);
+
 
   // Attachement des interruptions pour le bouton poussoir
   attachInterrupt(digitalPinToInterrupt(buttonPin), handleButtonPress, CHANGE);
 }
+
 
 // Fonction de boucle principale
 void loop() {
