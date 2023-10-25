@@ -295,6 +295,59 @@ void printTaskListTask(void *parameter) {
   }
 }
 
+// Variable pour stocker le handle de la tâche de fermeture de porte
+TaskHandle_t closeDoorTaskHandle = NULL;
+
+// Fonction pour la tâche de fermeture de porte
+void closeDoorTask(void *parameter) {
+  for (;;) {
+    // Obtenir l'heure actuelle
+    DateTime now = rtc.now();
+
+    // Calculer l'heure du coucher du soleil + 30 minutes
+    int coucherSoleilPlus30 = coucherSoleil + 30;
+
+    // Convertir l'heure actuelle en minutes depuis minuit
+    int currentMinuteOfDay = now.hour() * 60 + now.minute();
+
+    // Vérifier si le temps actuel est après l'heure du coucher du soleil + 30 minutes
+    if (currentMinuteOfDay >= coucherSoleilPlus30) {
+      // Exécuter la fonction pour fermer la porte
+      fermerPorte();
+      vTaskDelete(NULL); // Arrêter cette tâche car elle a rempli sa mission
+    }
+
+    // Attendre un certain temps avant de vérifier à nouveau l'heure (par exemple, 1 minute)
+    vTaskDelay(pdMS_TO_TICKS(60000)); // Attente d'1 minute
+  }
+}
+
+TaskHandle_t openDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'ouverture de porte
+
+// Fonction pour la tâche d'ouverture de porte
+void openDoorTask(void *parameter) {
+  for (;;) {
+    // Obtenir l'heure actuelle
+    DateTime now = rtc.now();
+
+    // Calculer l'heure du lever du soleil + 5 minutes
+    int leverSoleilPlus5 = leverSoleil + 5;
+
+    // Convertir l'heure actuelle en minutes depuis minuit
+    int currentMinuteOfDay = now.hour() * 60 + now.minute();
+
+    // Vérifier si le temps actuel est après l'heure du lever du soleil + 5 minutes
+    if (currentMinuteOfDay >= leverSoleilPlus5) {
+      // Exécuter la fonction pour ouvrir la porte
+      ouvrirPorte();
+      vTaskDelete(NULL); // Arrêter cette tâche car elle a rempli sa mission
+    }
+
+    // Attendre un certain temps avant de vérifier à nouveau l'heure (par exemple, 1 minute)
+    vTaskDelay(pdMS_TO_TICKS(60000)); // Attente d'1 minute
+  }
+}
+
 // Fonction d'initialisation
 void setup() {
   Serial.begin(115200);
@@ -329,7 +382,10 @@ void setup() {
   xTaskCreatePinnedToCore(calculateSunriseSunsetTask, "calculateSunriseSunsetTask", 4096, NULL, 1, NULL, 0);
   // Créer la tâche d'impression de la liste des tâches
   xTaskCreatePinnedToCore(printTaskListTask, "printTaskListTask", 4096, NULL, 1, &printTaskListTaskHandle, 0);
-
+  // Créer la tâche de fermeture de porte
+  xTaskCreatePinnedToCore(closeDoorTask, "closeDoorTask", 4096, NULL, 1, &closeDoorTaskHandle, 0);
+  // Créer la tâche d'ouverture de porte
+  xTaskCreatePinnedToCore(openDoorTask, "openDoorTask", 4096, NULL, 1, &openDoorTaskHandle, 0);
 
   // Attachement des interruptions pour le bouton poussoir
   attachInterrupt(digitalPinToInterrupt(buttonPin), handleButtonPress, CHANGE);
