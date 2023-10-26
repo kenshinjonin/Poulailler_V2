@@ -5,7 +5,7 @@
 #include <RTClib.h>
 #include <Timezone.h>
 #include <Dusk2Dawn.h>
-//#include <AsyncTCP.h>
+#include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <AsyncElegantOTA.h>
 
