@@ -6,7 +6,6 @@ Code ESP32 pour automatiser une porte de poulailler avec calcul automatique de l
 
 TODO :
 - MQTT
-- OTA
 
 =================================================================
 
@@ -18,4 +17,3 @@ Esp32 code, to automate a chicken coop door using automatic sun position calcula
 
 TODO :
 - MQTT
-- OTA
