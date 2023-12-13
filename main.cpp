@@ -170,6 +170,8 @@ bool updateDS3231Time() {
   return true; // L'heure a été mise à jour avec succès
 }
 
+// Tâche pour vérifier la connexion WIFI toutes les 15 minutes
+TaskHandle_t WiFiReconnectTaskHandle = NULL; // Variable pour stocker le handle de la tâche WiFiReconnectTask
 void WiFiReconnectTask(void * pvParameters) {
   for (;;) {
     if (WiFi.status() != WL_CONNECTED) {
@@ -288,37 +290,36 @@ void handleButtonPress() {
   int buttonState = digitalRead(buttonPinNumber);
 
   // Vérifier si le bouton est enfoncé
-  if (buttonState == LOW) {
-    // Vérifier si suffisamment de temps s'est écoulé depuis le dernier appui sur le bouton
-    if (millis() - lastButtonPressTimestamp >= buttonDebounceDelay) {
-      // Mettre à jour le moment du dernier appui sur le bouton
-      lastButtonPressTimestamp = millis();
-      Serial.println("Appui sur le bouton détecté");
+  if (buttonState == LOW && millis() - lastButtonPressTimestamp >= buttonDebounceDelay) {
+    // Mettre à jour le moment du dernier appui sur le bouton
+    lastButtonPressTimestamp = millis();
+    Serial.println("Appui sur le bouton détecté");
 
-      // Inverser l'état de la porte si elle est fixe (pas en mouvement)
-      if (!isDoorMoving) {
-        // Vérifier l'état des broches du moteur pour déterminer la direction de mouvement
-        bool motorInput1PinNumberState = digitalRead(motorInput1PinNumber);
-        bool motorInput2PinNumberState = digitalRead(motorInput2PinNumber);
+    // Vérifier si la porte n'est pas en mouvement
+    if (!isDoorMoving) {
+      // Obtenir l'état des broches du moteur
+      bool motorInput1State = digitalRead(motorInput1PinNumber);
+      bool motorInput2State = digitalRead(motorInput2PinNumber);
 
-        // Arrêter la porte si elle est en mouvement dans une direction
-        if (motorInput1PinNumberState || motorInput2PinNumberState) {
-          stopPorte();
-        } else {
-          // Aucun mouvement en cours, décider de la direction en fonction des capteurs de fin de course
-          if (digitalRead(upperLimitSwitchPinNumber) == LOW && digitalRead(lowerLimitSwitchPinNumber) == LOW) {
-            // Les deux capteurs de fin de course sont inactifs, cela signifie que la porte est à mi-chemin,
-            // on choisit alors la direction précédente du mouvement
-            if (previousDoorDirectionUp) {
-              fermerPorte(); // On ferme la porte car la direction précédente était vers le haut
-            } else {
-              ouvrirPorte(); // On ouvre la porte car la direction précédente était vers le bas
-            }
-          } else if (digitalRead(upperLimitSwitchPinNumber) == LOW) {
-            ouvrirPorte(); // Le capteur du haut est actif, la porte est fermée, donc on l'ouvre
-          } else if (digitalRead(lowerLimitSwitchPinNumber) == LOW) {
-            fermerPorte(); // Le capteur du bas est actif, la porte est ouverte, donc on la ferme
+      // Arrêter la porte si elle est en mouvement
+      if (motorInput1State || motorInput2State) {
+        stopPorte();
+      } else {
+        // Déterminer la direction en fonction des capteurs de fin de course
+        bool upperLimitActive = digitalRead(upperLimitSwitchPinNumber) == LOW;
+        bool lowerLimitActive = digitalRead(lowerLimitSwitchPinNumber) == LOW;
+
+        if (upperLimitActive && lowerLimitActive) {
+          // Les deux capteurs de fin de course sont inactifs, la porte est à mi-chemin
+          if (previousDoorDirectionUp) {
+            fermerPorte();
+          } else {
+            ouvrirPorte();
           }
+        } else if (upperLimitActive) {
+          fermerPorte();
+        } else if (lowerLimitActive) {
+          ouvrirPorte();
         }
       }
     }
@@ -364,24 +365,9 @@ void printTaskListTask(void *parameter) {
 TaskHandle_t closeDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche de fermeture de porte
 void closeDoorTask(void *parameter) {
   for (;;) {
-    // Obtenir l'heure actuelle
-    DateTime now = rtc.now();
+    fermerPorte();
 
-    // Calculer l'heure du coucher du soleil + 30 minutes
-    int sunsetTimePlus30 = sunsetTime + 30;
-
-    // Convertir l'heure actuelle en minutes depuis minuit
-    int currentMinuteOfDay = now.hour() * 60 + now.minute();
-
-    // Vérifier si le temps actuel est après l'heure du coucher du soleil + 30 minutes
-    if (currentMinuteOfDay >= sunsetTimePlus30) {
-      // Exécuter la fonction pour fermer la porte
-      fermerPorte();
-      vTaskDelete(NULL); // Arrêter cette tâche car elle a rempli sa mission
-    }
-
-    // Attendre un certain temps avant de vérifier à nouveau l'heure (par exemple, 1 minute)
-    vTaskDelay(pdMS_TO_TICKS(60000)); // Attente d'1 minute
+    vTaskDelay(pdMS_TO_TICKS((sunsetTime + 30) * 60 * 1000));
   }
 }
 
@@ -389,24 +375,9 @@ void closeDoorTask(void *parameter) {
 TaskHandle_t openDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche d'ouverture de porte
 void openDoorTask(void *parameter) {
   for (;;) {
-    // Obtenir l'heure actuelle
-    DateTime now = rtc.now();
-
-    // Calculer l'heure du lever du soleil + 5 minutes
-    int sunriseTimePlus5 = sunriseTime + 5;
-
-    // Convertir l'heure actuelle en minutes depuis minuit
-    int currentMinuteOfDay = now.hour() * 60 + now.minute();
-
-    // Vérifier si le temps actuel est après l'heure du lever du soleil + 5 minutes
-    if (currentMinuteOfDay >= sunriseTimePlus5) {
-      // Exécuter la fonction pour ouvrir la porte
-      ouvrirPorte();
-      vTaskDelete(NULL); // Arrêter cette tâche car elle a rempli sa mission
-    }
-
-    // Attendre un certain temps avant de vérifier à nouveau l'heure (par exemple, 1 minute)
-    vTaskDelay(pdMS_TO_TICKS(60000)); // Attente d'1 minute
+  ouvrirPorte();
+   
+	vTaskDelay(pdMS_TO_TICKS((sunriseTime + 5) * 60 * 1000));
   }
 }
 
@@ -449,7 +420,7 @@ void setup() {
   initPorte();
   
   // Créer une tâche pour la reconnexion WiFi
-  xTaskCreate(WiFiReconnectTask, "WiFiReconnectTask", 4096, NULL, 1, NULL);
+  xTaskCreatePinnedToCore(WiFiReconnectTask, "WiFiReconnectTask", 4096, NULL, 1, &WiFiReconnectTaskHandle, 0);
   // Démarrer une tâche pour afficher le RSSI toutes les 15 minutes
   xTaskCreatePinnedToCore(printRSSITask, "printRSSITask", 4096, NULL, 1, &printRSSITaskHandle, 0);
   // Démarrer une tâche pour la mise à jour de l'heure toutes les 24 heures
