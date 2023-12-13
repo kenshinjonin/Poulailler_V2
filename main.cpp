@@ -36,6 +36,8 @@ int UTC_OFFSET = 1;
 // Variables pour stocker l'heure du lever et du coucher du soleil
 int sunriseTime = 0; // Heure du lever du soleil (en minutes depuis minuit)
 int sunsetTime = 0;  // Heure du coucher du soleil (en minutes depuis minuit)
+char sunriseTimeFormatted[6];
+char sunsetTimeFormatted[6];
 
 // Définition des broches utilisées
 const uint8_t buttonPinNumber = 2;           // Broche du bouton poussoir
@@ -100,8 +102,6 @@ void calculateSunriseSunset()
   int sunsetTime = myLocation.sunset(year, month, day, false);
 
   // Convertir les heures locales en "HHhMM"
-  char sunriseTimeFormatted[6];
-  char sunsetTimeFormatted[6];
   formatTime(sunriseTime, sunriseTimeFormatted);
   formatTime(sunsetTime, sunsetTimeFormatted);
 
@@ -495,7 +495,68 @@ void setup()
 
   // Page WEB
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-            { request->send(200, "text/plain", "Hi! I am ESP32."); });
+            {
+  // Obtenez les informations nécessaires
+  char rtcTimeFormatted[20];
+  DateTime now = rtc.now();
+  int currentMinuteOfDay = now.hour() * 60 + now.minute();
+  formatTime(currentMinuteOfDay, rtcTimeFormatted);
+
+  String wifiSignalStrength = String(WiFi.RSSI());
+  String sunriseTimeStr = String(sunriseTimeFormatted);
+  String sunsetTimeStr = String(sunsetTimeFormatted);
+  String upperLimitSwitchState = (digitalRead(upperLimitSwitchPinNumber) == HIGH) ? "Fermé" : "Ouvert";
+  String lowerLimitSwitchState = (digitalRead(lowerLimitSwitchPinNumber) == HIGH) ? "Fermé" : "Ouvert";
+  String doorMovementState = (isDoorMoving) ? "En mouvement" : "Arrêté";
+
+  // Construisez la réponse HTML
+  String html = "<html><head><style>h1 {text-align:center;font-weight:bold;}</style></head><body>";
+  html += "<h1>POULAILLER</h1>";
+  html += "<p>Heure actuelle (RTC) : " + String(rtcTimeFormatted) + "</p>";
+  html += "<p>Force du signal WiFi : " + wifiSignalStrength + " dBm</p>";
+  html += "<p>Heure lever du soleil : " + sunriseTimeStr + "</p>";
+  html += "<p>Heure coucher du soleil : " + sunsetTimeStr + "</p>";
+  html += "<p>Capteur haut (porte) : " + upperLimitSwitchState + "</p>";
+  html += "<p>Capteur bas (porte) : " + lowerLimitSwitchState + "</p>";
+  html += "<p>État de la porte : " + doorMovementState + "</p>";
+  html += "<button onclick=\"fermerPorte()\">FERMER</button>";
+  html += "<button onclick=\"stopPorte()\">STOP</button>";
+  html += "<button onclick=\"ouvrirPorte()\">OUVRIR</button>";
+  html += "</body><script>";
+  html += "function fermerPorte() { fetch('/fermer'); }";
+  html += "function stopPorte() { fetch('/stop'); }";
+  html += "function ouvrirPorte() { fetch('/ouvrir'); }";
+  html += "</script></html>";
+
+  // Envoyez la réponse au client
+  request->send(200, "text/html", html); });
+
+  // Endpoint pour fermer la porte
+  server.on("/fermer", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+  // Appeler la fonction pour fermer la porte
+  fermerPorte();
+
+  // Envoyer une réponse vide au client
+  request->send(200, "text/plain", ""); });
+
+  // Endpoint pour arrêter la porte
+  server.on("/stop", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+  // Appeler la fonction pour arrêter la porte
+  stopPorte();
+
+  // Envoyer une réponse vide au client
+  request->send(200, "text/plain", ""); });
+
+  // Endpoint pour ouvrir la porte
+  server.on("/ouvrir", HTTP_GET, [](AsyncWebServerRequest *request)
+            {
+  // Appeler la fonction pour ouvrir la porte
+  ouvrirPorte();
+
+  // Envoyer une réponse vide au client
+  request->send(200, "text/plain", ""); });
 
   // Start ElegantOTA
   AsyncElegantOTA.begin(&server);
