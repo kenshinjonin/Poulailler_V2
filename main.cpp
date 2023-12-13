@@ -34,36 +34,44 @@ const double longitude = 4.887889949495334;  // Longitude en degrés décimaux
 int UTC_OFFSET = 1;
 
 // Variables pour stocker l'heure du lever et du coucher du soleil
-int leverSoleil = 0;  // Heure du lever du soleil (en minutes depuis minuit)
-int coucherSoleil = 0;  // Heure du coucher du soleil (en minutes depuis minuit)
+int sunriseTime = 0;  // Heure du lever du soleil (en minutes depuis minuit)
+int sunsetTime = 0;  // Heure du coucher du soleil (en minutes depuis minuit)
 
 // Définition des broches utilisées
-const int buttonPin = 2;       // Broche du bouton poussoir
-const int motorEnablePin = 4;  // Broche d'activation du moteur (ENA sur L298N)
-const int motorInput1 = 5;     // Broche d'entrée 1 du moteur (IN1 sur L298N)
-const int motorInput2 = 6;     // Broche d'entrée 2 du moteur (IN2 sur L298N)
-const int upperLimitSwitchPin = 7;  // Broche du capteur fin de course haut
-const int lowerLimitSwitchPin = 8;  // Broche du capteur fin de course bas
+const uint8_t buttonPinNumber = 2;       // Broche du bouton poussoir
+const uint8_t motorEnablePinNumber = 4;  // Broche d'activation du moteur (ENA sur L298N)
+const uint8_t motorInput1PinNumber = 5;     // Broche d'entrée 1 du moteur (IN1 sur L298N)
+const uint8_t motorInput2PinNumber = 6;     // Broche d'entrée 2 du moteur (IN2 sur L298N)
+const uint8_t upperLimitSwitchPinNumber = 7;  // Broche du capteur fin de course haut
+const uint8_t lowerLimitSwitchPinNumber = 8;  // Broche du capteur fin de course bas
 
 // Variables d'état de la porte
-bool isMoving = false;
-bool previousDirectionUp = false;
+bool isDoorMoving = false;
+bool previousDoorDirectionUp = false;
 
 // Constante pour définir le délai minimal entre deux appuis successifs sur le bouton (en millisecondes)
-const unsigned long debounceDelay = 500;
+const unsigned long buttonDebounceDelay = 500;
 
 // Variable pour suivre le moment du dernier appui sur le bouton
-unsigned long lastButtonPressTime = 0;
-
-// Durée de temporisation d'une seconde (en millisecondes)
-const unsigned long stopDuration = 1000;
+unsigned long lastButtonPressTimestamp = 0;
 
 // Durée maximale de mouvement de la porte (en millisecondes)
-const unsigned long maxMovementDuration = 22000; // 22 secondes
+const unsigned long maxDoorMovementDuration = 22000; // 22 secondes
+
+// Définir les constantes pour les dates de changement d'heure d'été
+const int DST_START_MONTH = 3; // Mars
+const int DST_END_MONTH = 10;  // Octobre
+const int DST_CHANGE_DAY = 25; // Après le 24ème jour
+
+// Fonction pour formater le temps en "HHhMM" sans utiliser strftime
+void formatTime(int time, char* buffer) {
+  int hours = time / 60;
+  int minutes = time % 60;
+  sprintf(buffer, "%02dh%02d", hours, minutes);
+}
 
 // Calculer l'heure du lever du soleil et du coucher du soleil
 void calculateSunriseSunset() {
-  
   DateTime now = rtc.now();
   int year = now.year();
   int month = now.month();
@@ -71,70 +79,114 @@ void calculateSunriseSunset() {
   int dayOfWeek = now.dayOfTheWeek();
 
   // Vérifier si nous sommes dans la période de l'heure d'été (DST)
-  if (month > 2 && month < 11) {
-    if (month == 3 && dayOfWeek == 1 && day > 24) {
-      // Dernier dimanche de mars, heure d'été commence
-      UTC_OFFSET = 2;
-    } else if (month == 10 && dayOfWeek == 1 && day > 24) {
-      // Dernier dimanche d'octobre, heure d'été se termine
-      UTC_OFFSET = 1;
-    } else {
-      // Pas de changement d'heure, utiliser UTC_OFFSET actuel
-    }
+  if ((month > DST_START_MONTH && month < DST_END_MONTH) ||
+      (month == DST_START_MONTH && (dayOfWeek == 1 && day >= DST_CHANGE_DAY)) ||
+      (month == DST_END_MONTH && (dayOfWeek == 1 && day < DST_CHANGE_DAY))) {
+    UTC_OFFSET = 2; // Heure d'été
   } else {
-    UTC_OFFSET = 1;  // En dehors de la période d'heure d'été, utiliser UTC_OFFSET sur +1
+    UTC_OFFSET = 1; // Heure standard
   }
 
-  // Définir la position et l'offset UTC pour Dusk2Dawn
-  Dusk2Dawn myLocation(latitude, longitude, UTC_OFFSET * 60);
-  
-  // Obtenez l'heure du lever du soleil
-  int sunriseTime = myLocation.sunrise(year, month, day, false);
+  // Créer l'objet Dusk2Dawn une seule fois si possible
+  static Dusk2Dawn myLocation(latitude, longitude, UTC_OFFSET * 60);
 
-  // Obtenez l'heure du coucher du soleil
+  // Calculer le lever et le coucher du soleil
+  int sunriseTime = myLocation.sunrise(year, month, day, false);
   int sunsetTime = myLocation.sunset(year, month, day, false);
 
   // Convertir les heures locales en "HHhMM"
-  time_t sunriseTime_t = sunriseTime * 60; // Convertir en secondes
-  time_t sunsetTime_t = sunsetTime * 60;   // Convertir en secondes
-
-  struct tm sunriseTm = *localtime(&sunriseTime_t);
-  struct tm sunsetTm = *localtime(&sunsetTime_t);
-
-  char leverFormate[6];
-  char coucherFormate[6];
-
-  strftime(leverFormate, sizeof(leverFormate), "%Hh%M", &sunriseTm);
-  strftime(coucherFormate, sizeof(coucherFormate), "%Hh%M", &sunsetTm);
+  char sunriseTimeFormatted[6];
+  char sunsetTimeFormatted[6];
+  formatTime(sunriseTime, sunriseTimeFormatted);
+  formatTime(sunsetTime, sunsetTimeFormatted);
 
   // Afficher dans la console série
   Serial.print("Heure du lever du soleil : ");
-  Serial.println(leverFormate);
+  Serial.println(sunriseTimeFormatted);
   Serial.print("Heure du coucher du soleil : ");
-  Serial.println(coucherFormate);
+  Serial.println(sunsetTimeFormatted);
 }
 
 // Connexion au réseau WiFi
-void connectWiFi() {
+bool connectWiFi() {
+  unsigned long startTime = millis();
+  unsigned long timeout = 30000; // Timeout de 30 secondes
+  bool connected = false;
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  Serial.println("Tentative de connexion WiFi...");
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startTime < timeout) {
     delay(1000);
     Serial.print(".");
   }
-  Serial.println("");
-  Serial.println("WiFi connecté à : ");
-  Serial.println(ssid);
-  Serial.print("Addresse IP : ");
-  Serial.println(WiFi.localIP());
+
+  if (WiFi.status() == WL_CONNECTED) {
+    connected = true;
+    Serial.println("");
+    Serial.println("WiFi connecté avec succès à : ");
+    Serial.println(ssid);
+    Serial.print("Adresse IP : ");
+    Serial.println(WiFi.localIP());
+    Serial.print("RSSI : ");
+    Serial.print(WiFi.RSSI());
+    Serial.println(" dBm");
+  } else {
+    Serial.println("");
+    Serial.println("Échec de la connexion WiFi. Vérifiez vos identifiants ou votre réseau.");
+    WiFi.disconnect();
+    WiFi.mode(WIFI_OFF);
+  }
+
+  return connected;
+}
+
+// Fonction pour obtenir et afficher le RSSI en dBm
+void printRSSI() {
+  long rssi = WiFi.RSSI();
+  Serial.print("RSSI: ");
+  Serial.print(rssi);
+  Serial.println(" dBm");
 }
 
 // Mettre à jour l'heure du module DS3231 via NTP et gérer le passage automatique à l'heure d'été/heure d'hiver
-void updateDS3231Time() {
-  timeClient.update(); // Récupérer l'heure NTP
+bool updateDS3231Time() {
+  if (!timeClient.update()) { // Récupérer l'heure NTP et vérifier si la mise à jour a réussi
+    return false; // La mise à jour NTP a échoué, donc on ne met pas à jour l'heure du DS3231
+  }
+
   time_t utcTime = timeClient.getEpochTime(); // Obtenir l'heure UTC en secondes depuis le 1er janvier 1970
+  if (utcTime == 0) {
+    return false; // La récupération de l'heure UTC a échoué
+  }
+
   time_t localTime = myTZ.toLocal(utcTime); // Convertir l'heure UTC en heure locale
+  if (localTime == 0) {
+    return false; // La conversion de l'heure locale a échoué
+  }
+
   rtc.adjust(DateTime(localTime)); // Mettre à jour l'heure du module RTC avec l'heure locale
+  return true; // L'heure a été mise à jour avec succès
+}
+
+void WiFiReconnectTask(void * pvParameters) {
+  for (;;) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("Reconnexion WiFi...");
+      connectWiFi();
+    }
+    vTaskDelay(pdMS_TO_TICKS(15 * 60 * 1000)); // Attendre 15 minutes
+  }
+}
+
+// Tâche pour afficher le RSSI toutes les 15 minutes
+TaskHandle_t printRSSITaskHandle = NULL; // Variable pour stocker le handle de la tâche printRSSITask
+void printRSSITask(void *parameter) {
+  for (;;) {
+    printRSSI(); // Appeler la fonction pour afficher le RSSI
+    vTaskDelay(pdMS_TO_TICKS(15 * 60 * 1000)); // Attendre 15 minutes
+  }
 }
 
 // Tâche pour mettre à jour l'heure toutes les 24 heures
@@ -150,49 +202,51 @@ void updateTimeTask(void *parameter) {
 // Fonction de tâche pour recalculer l'heure du lever du soleil et du coucher du soleil tous les jours à 00h01
 TaskHandle_t calculateSunriseSunsetTaskHandle = NULL; // Variable pour stocker le handle de la tâche calculateSunriseSunsetTask
 void calculateSunriseSunsetTask(void *parameter) {
+  const int secondsPerDay = 86400; // Nombre de secondes dans une journée
+  const int targetHour = 0; // Heure cible (00h)
+  const int targetMinute = 1; // Minute cible (01)
+
   for (;;) {
-    // Attendre jusqu'à 00h01 pour recalculer l'heure du lever du soleil et du coucher du soleil
     DateTime now = rtc.now();
-    DateTime nextExecution = DateTime(now.year(), now.month(), now.day(), 0, 1, 0);
-    nextExecution = nextExecution + TimeSpan(1, 0, 0, 0); // Ajouter un jour pour la prochaine exécution
+    DateTime nextExecution(now.year(), now.month(), now.day(), targetHour, targetMinute, 0);
 
-    // Calculer le nombre de secondes jusqu'à la prochaine exécution
-    time_t nowSecs = now.unixtime();
-    time_t nextExecutionSecs = nextExecution.unixtime();
-    long delaySeconds = nextExecutionSecs - nowSecs;
-
-    if (delaySeconds < 0) {
-      delaySeconds += 24 * 60 * 60; // Ajouter 24 heures si la prochaine exécution est passée
+    // Si l'heure actuelle est après 00h01, définir la prochaine exécution pour le jour suivant
+    if (now >= nextExecution) {
+      nextExecution = nextExecution + TimeSpan(1, 0, 0, 0);
     }
 
+    // Calculer le délai en secondes jusqu'à la prochaine exécution
+    long delaySeconds = (nextExecution.unixtime() - now.unixtime());
+
+    // Convertir le délai en millisecondes et attendre
     vTaskDelay(pdMS_TO_TICKS(delaySeconds * 1000));
 
-    calculateSunriseSunset(); // Recalculer l'heure du lever du soleil et du coucher du soleil
+    calculateSunriseSunset(); // Recalculer l'heure du lever et du coucher du soleil
   }
 }
 
 // Arrêter le mouvement de la porte
 void stopPorte() {
-  isMoving = false;
-  digitalWrite(motorInput1, LOW);
-  digitalWrite(motorInput2, LOW);
-  digitalWrite(motorEnablePin, LOW); // Désactiver le moteur
+  isDoorMoving = false;
+  digitalWrite(motorInput1PinNumber, LOW);
+  digitalWrite(motorInput2PinNumber, LOW);
+  digitalWrite(motorEnablePinNumber, LOW); // Désactiver le moteur
   Serial.println("Porte arrêtée");
 }
 
 // Ouvrir la porte
 void ouvrirPorte() {
-  isMoving = true;
+  isDoorMoving = true;
   Serial.println("Ouverture de la porte");
-  previousDirectionUp = true; // Mettre à jour la direction précédente
-  digitalWrite(motorEnablePin, HIGH); // Activer le moteur
-  digitalWrite(motorInput1, HIGH);
-  digitalWrite(motorInput2, LOW);
+  previousDoorDirectionUp = true; // Mettre à jour la direction précédente
+  digitalWrite(motorEnablePinNumber, HIGH); // Activer le moteur
+  digitalWrite(motorInput1PinNumber, HIGH);
+  digitalWrite(motorInput2PinNumber, LOW);
 
   unsigned long startTime = millis(); // Temps de départ pour suivre la durée de mouvement
   unsigned long elapsedTime = 0; // Temps écoulé depuis le début du mouvement
 
-  while (digitalRead(upperLimitSwitchPin) == HIGH && elapsedTime < maxMovementDuration) {
+  while (digitalRead(upperLimitSwitchPinNumber) == HIGH && elapsedTime < maxDoorMovementDuration) {
     // Vérifier si suffisamment de temps s'est écoulé pour laisser d'autres tâches s'exécuter (éviter un blocage)
     delay(1); // Attente d'une milliseconde
     elapsedTime = millis() - startTime; // Mettre à jour le temps écoulé
@@ -206,17 +260,17 @@ void ouvrirPorte() {
 
 // Fermer la porte
 void fermerPorte() {
-  isMoving = true;
+  isDoorMoving = true;
   Serial.println("Fermeture de la porte");
-  previousDirectionUp = false; // Mettre à jour la direction précédente
-  digitalWrite(motorEnablePin, HIGH); // Activer le moteur
-  digitalWrite(motorInput1, LOW);
-  digitalWrite(motorInput2, HIGH);
+  previousDoorDirectionUp = false; // Mettre à jour la direction précédente
+  digitalWrite(motorEnablePinNumber, HIGH); // Activer le moteur
+  digitalWrite(motorInput1PinNumber, LOW);
+  digitalWrite(motorInput2PinNumber, HIGH);
 
   unsigned long startTime = millis(); // Temps de départ pour suivre la durée de mouvement
   unsigned long elapsedTime = 0; // Temps écoulé depuis le début du mouvement
 
-  while (digitalRead(lowerLimitSwitchPin) == HIGH && elapsedTime < maxMovementDuration) {
+  while (digitalRead(lowerLimitSwitchPinNumber) == HIGH && elapsedTime < maxDoorMovementDuration) {
     // Vérifier si suffisamment de temps s'est écoulé pour laisser d'autres tâches s'exécuter (éviter un blocage)
     delay(1); // Attente d'une milliseconde
     elapsedTime = millis() - startTime; // Mettre à jour le temps écoulé
@@ -231,38 +285,38 @@ void fermerPorte() {
 // Fonction pour gérer l'interruption du bouton poussoir
 void handleButtonPress() {
   // Lire l'état du bouton poussoir
-  int buttonState = digitalRead(buttonPin);
+  int buttonState = digitalRead(buttonPinNumber);
 
   // Vérifier si le bouton est enfoncé
   if (buttonState == LOW) {
     // Vérifier si suffisamment de temps s'est écoulé depuis le dernier appui sur le bouton
-    if (millis() - lastButtonPressTime >= debounceDelay) {
+    if (millis() - lastButtonPressTimestamp >= buttonDebounceDelay) {
       // Mettre à jour le moment du dernier appui sur le bouton
-      lastButtonPressTime = millis();
+      lastButtonPressTimestamp = millis();
       Serial.println("Appui sur le bouton détecté");
 
       // Inverser l'état de la porte si elle est fixe (pas en mouvement)
-      if (!isMoving) {
+      if (!isDoorMoving) {
         // Vérifier l'état des broches du moteur pour déterminer la direction de mouvement
-        bool motorInput1State = digitalRead(motorInput1);
-        bool motorInput2State = digitalRead(motorInput2);
+        bool motorInput1PinNumberState = digitalRead(motorInput1PinNumber);
+        bool motorInput2PinNumberState = digitalRead(motorInput2PinNumber);
 
         // Arrêter la porte si elle est en mouvement dans une direction
-        if (motorInput1State || motorInput2State) {
+        if (motorInput1PinNumberState || motorInput2PinNumberState) {
           stopPorte();
         } else {
           // Aucun mouvement en cours, décider de la direction en fonction des capteurs de fin de course
-          if (digitalRead(upperLimitSwitchPin) == LOW && digitalRead(lowerLimitSwitchPin) == LOW) {
+          if (digitalRead(upperLimitSwitchPinNumber) == LOW && digitalRead(lowerLimitSwitchPinNumber) == LOW) {
             // Les deux capteurs de fin de course sont inactifs, cela signifie que la porte est à mi-chemin,
             // on choisit alors la direction précédente du mouvement
-            if (previousDirectionUp) {
+            if (previousDoorDirectionUp) {
               fermerPorte(); // On ferme la porte car la direction précédente était vers le haut
             } else {
               ouvrirPorte(); // On ouvre la porte car la direction précédente était vers le bas
             }
-          } else if (digitalRead(upperLimitSwitchPin) == LOW) {
+          } else if (digitalRead(upperLimitSwitchPinNumber) == LOW) {
             ouvrirPorte(); // Le capteur du haut est actif, la porte est fermée, donc on l'ouvre
-          } else if (digitalRead(lowerLimitSwitchPin) == LOW) {
+          } else if (digitalRead(lowerLimitSwitchPinNumber) == LOW) {
             fermerPorte(); // Le capteur du bas est actif, la porte est ouverte, donc on la ferme
           }
         }
@@ -277,7 +331,7 @@ void initPorte() {
   DateTime now = rtc.now();
   int currentMinuteOfDay = now.hour() * 60 + now.minute();
 
-  if (currentMinuteOfDay >= leverSoleil && currentMinuteOfDay < coucherSoleil) {
+  if (currentMinuteOfDay >= sunriseTime && currentMinuteOfDay < sunsetTime) {
     // L'heure actuelle est entre le lever et le coucher du soleil, ouvrir la porte
     ouvrirPorte();
   } else {
@@ -306,7 +360,7 @@ void printTaskListTask(void *parameter) {
   }
 }
 
-// Ttâche de fermeture de porte
+// Tâche de fermeture de porte
 TaskHandle_t closeDoorTaskHandle = NULL; // Variable pour stocker le handle de la tâche de fermeture de porte
 void closeDoorTask(void *parameter) {
   for (;;) {
@@ -314,13 +368,13 @@ void closeDoorTask(void *parameter) {
     DateTime now = rtc.now();
 
     // Calculer l'heure du coucher du soleil + 30 minutes
-    int coucherSoleilPlus30 = coucherSoleil + 30;
+    int sunsetTimePlus30 = sunsetTime + 30;
 
     // Convertir l'heure actuelle en minutes depuis minuit
     int currentMinuteOfDay = now.hour() * 60 + now.minute();
 
     // Vérifier si le temps actuel est après l'heure du coucher du soleil + 30 minutes
-    if (currentMinuteOfDay >= coucherSoleilPlus30) {
+    if (currentMinuteOfDay >= sunsetTimePlus30) {
       // Exécuter la fonction pour fermer la porte
       fermerPorte();
       vTaskDelete(NULL); // Arrêter cette tâche car elle a rempli sa mission
@@ -339,13 +393,13 @@ void openDoorTask(void *parameter) {
     DateTime now = rtc.now();
 
     // Calculer l'heure du lever du soleil + 5 minutes
-    int leverSoleilPlus5 = leverSoleil + 5;
+    int sunriseTimePlus5 = sunriseTime + 5;
 
     // Convertir l'heure actuelle en minutes depuis minuit
     int currentMinuteOfDay = now.hour() * 60 + now.minute();
 
     // Vérifier si le temps actuel est après l'heure du lever du soleil + 5 minutes
-    if (currentMinuteOfDay >= leverSoleilPlus5) {
+    if (currentMinuteOfDay >= sunriseTimePlus5) {
       // Exécuter la fonction pour ouvrir la porte
       ouvrirPorte();
       vTaskDelete(NULL); // Arrêter cette tâche car elle a rempli sa mission
@@ -366,7 +420,7 @@ void setup() {
   Serial.begin(115200);
 
   // Se connecter au réseau WiFi
-  connectWiFi();
+  bool isWiFiConnected = connectWiFi();
 
   // Démarrer la communication I2C (module RTC)
   Wire.begin();
@@ -375,15 +429,15 @@ void setup() {
   rtc.begin();
 
   // Configuration des broches en entrée/sortie
-  pinMode(buttonPin, INPUT_PULLUP);
-  pinMode(motorEnablePin, OUTPUT);
-  pinMode(motorInput1, OUTPUT);
-  pinMode(motorInput2, OUTPUT);
-  pinMode(upperLimitSwitchPin, INPUT_PULLUP);
-  pinMode(lowerLimitSwitchPin, INPUT_PULLUP);
+  pinMode(buttonPinNumber, INPUT_PULLUP);
+  pinMode(motorEnablePinNumber, OUTPUT);
+  pinMode(motorInput1PinNumber, OUTPUT);
+  pinMode(motorInput2PinNumber, OUTPUT);
+  pinMode(upperLimitSwitchPinNumber, INPUT_PULLUP);
+  pinMode(lowerLimitSwitchPinNumber, INPUT_PULLUP);
 
   // Désactiver le moteur au démarrage
-  digitalWrite(motorEnablePin, LOW);
+  digitalWrite(motorEnablePinNumber, LOW);
 
   // Mettre à jour l'heure du module DS3231 au démarrage avec l'heure NTP
   updateDS3231Time();
@@ -394,6 +448,10 @@ void setup() {
   // Appeler la fonction pour initialiser la porte
   initPorte();
   
+  // Créer une tâche pour la reconnexion WiFi
+  xTaskCreate(WiFiReconnectTask, "WiFiReconnectTask", 4096, NULL, 1, NULL);
+  // Démarrer une tâche pour afficher le RSSI toutes les 15 minutes
+  xTaskCreatePinnedToCore(printRSSITask, "printRSSITask", 4096, NULL, 1, &printRSSITaskHandle, 0);
   // Démarrer une tâche pour la mise à jour de l'heure toutes les 24 heures
   xTaskCreatePinnedToCore(updateTimeTask, "updateTimeTask", 4096, NULL, 1, &updateTimeTaskHandle, 0);
   // Démarrer une tâche pour recalculer l'heure du lever du soleil et du coucher du soleil toutes les 24 heures à 00h01
@@ -406,7 +464,7 @@ void setup() {
   xTaskCreatePinnedToCore(openDoorTask, "openDoorTask", 4096, NULL, 1, &openDoorTaskHandle, 0);
 
   // Attachement des interruptions pour le bouton poussoir
-  attachInterrupt(digitalPinToInterrupt(buttonPin), handleButtonPress, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(buttonPinNumber), handleButtonPress, CHANGE);
 
   //Page WEB
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
